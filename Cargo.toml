@@ -1,0 +1,13 @@
+[package]
+name = "cargo-credential-pass"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+cargo-credential = "0.4.6"
+thiserror = "1.0.63"
+
+[dev-dependencies]
+assert_cmd = "2.0.15"
+predicates = "3.1.2"
+tempfile = "3.10.1"
