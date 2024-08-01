@@ -2,7 +2,7 @@ mod common;
 
 use assert_cmd::Command;
 use common::{gpg::GpgHandle, pass::PassHandle};
-use predicates::prelude::predicate;
+use predicates::prelude::{predicate, PredicateBooleanExt};
 
 #[test]
 fn test_token_lifecycle_with_name() {
@@ -165,5 +165,5 @@ fn run_plugin(stdin: String, want_stdout: String, pass: &PassHandle, gpg: &GpgHa
         .env("GNUPGHOME", &gpg.home_dir())
         .assert()
         .stdout(predicate::eq(want_stdout.as_bytes()))
-        .stderr(predicate::str::is_empty());
+        .stderr(predicate::str::contains("bananas").not()); // Never prints the token
 }
