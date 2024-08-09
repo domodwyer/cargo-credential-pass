@@ -1,5 +1,4 @@
 [![crates.io](https://img.shields.io/crates/v/cargo-credential-pass.svg)](https://crates.io/crates/cargo-credential-pass)
-[![docs.rs](https://docs.rs/cargo-credential-pass/badge.svg)](https://docs.rs/cargo-credential-pass)
 
 # cargo-credential-pass
 
