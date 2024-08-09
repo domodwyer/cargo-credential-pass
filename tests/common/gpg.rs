@@ -22,7 +22,7 @@ impl GpgHandle {
         &self,
         c: &'a mut std::process::Command,
     ) -> &'a mut std::process::Command {
-        c.env("GNUPGHOME", &self.home_dir())
+        c.env("GNUPGHOME", self.home_dir())
     }
 
     pub(crate) fn home_dir(&self) -> &Path {

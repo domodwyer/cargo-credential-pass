@@ -162,7 +162,7 @@ fn run_plugin(stdin: String, want_stdout: String, pass: &PassHandle, gpg: &GpgHa
         .env_remove("PASSWORD_STORE_GENERATED_LENGTH")
         .env_remove("GPG_TTY")
         .env("PASSWORD_STORE_DIR", pass.dir())
-        .env("GNUPGHOME", &gpg.home_dir())
+        .env("GNUPGHOME", gpg.home_dir())
         .assert()
         .stdout(predicate::eq(want_stdout.as_bytes()))
         .stderr(predicate::str::contains("bananas").not()); // Never prints the token
