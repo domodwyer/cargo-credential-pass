@@ -34,10 +34,39 @@ Your token will now be stored as an encrypted text file in
 
 That's it - you're good to go!
 
+## (Optionally) Configure It
+
+### Token Directory
+
+You override where the tokens are stored in the password store, replacing the
+the default `cargo-registry` subdir:
+
+```toml
+[registry]
+global-credential-providers = ["cargo-credential-pass cargo-tokens/live/here/"]
+```
+
+Note the trailing `/` is important - it indicates the directory to be used for
+storing tokens, and the filename will be automatically derived.
+
+### Exact Token Path
+
+A path without the trailing `/` will be interpreted as the exact token path
+(inc. filename) to use.
+
+This is helpful for setting per-registry token paths like below, but an exact
+path can only be used by 1 registry:
+
+```toml
+[registries.my-work-registry]
+credential-provider = ["cargo-credential-pass work/cargo-token.secret"]
+```
+
+
 [pass]: https://www.passwordstore.org/
 [credential provider]:
     https://doc.rust-lang.org/stable/cargo/reference/registry-authentication.html
 [Configure Cargo]:
     https://doc.rust-lang.org/stable/cargo/reference/registry-authentication.html#credential-plugins
 
-[^cargo]: Kinda - just cargo!
+[^cargo]: Kinda - only cargo required!
