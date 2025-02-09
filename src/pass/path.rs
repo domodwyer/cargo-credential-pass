@@ -28,7 +28,6 @@ impl<'a, 'b> PassPathBuilder<'a, 'b> {
     /// This call panics if an absolute path is provided. A relative path must
     /// be provided as the path will be interpreted relative to the password
     /// store root.
-    #[expect(dead_code)]
     pub(crate) fn under_dir(mut self, dir: &'a Path) -> Self {
         assert!(dir.is_relative());
 

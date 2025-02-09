@@ -14,8 +14,10 @@
 //   License for the specific language governing permissions and limitations
 //   under the License.
 
+use std::path::{Path, PathBuf};
+
 use cargo_credential::{Action, CacheControl, Credential, CredentialResponse, RegistryInfo};
-use pass::{PassKeychain, PassPath};
+use pass::{PassKeychain, PassPath, PassPathBuilder};
 
 mod pass;
 
@@ -43,9 +45,9 @@ impl Credential for Dispatch {
         &self,
         registry: &RegistryInfo<'_>,
         action: &Action<'_>,
-        _args: &[&str],
+        args: &[&str],
     ) -> Result<CredentialResponse, cargo_credential::Error> {
-        let path = PassPath::from(registry);
+        let path = path_from_args(args, registry)?;
         let keychain = PassKeychain::default();
 
         match action {
@@ -77,6 +79,58 @@ impl Credential for Dispatch {
     }
 }
 
+/// Parse (potentially empty) `args` to construct a [`PassPath`].
+///
+///   1. If args is empty, return a [`PassPath`] derived from `registry`.
+///   2. If args contains more than 1 entry, return an error.
+///   3. If args contains exactly one entry, and starts with `/`, return an
+///      error.
+///   4. If args contains exactly one entry, and ends with `/`, return a
+///      [`PassPath`] that uses this value as the directory under the password
+///      store root where tokens are stored.
+///   5. If args contains exactly one entry, and does not end with `/`, return a
+///      [`PassPath`] that uses this exact value as the storage path for the
+///      token.
+fn path_from_args(
+    args: &[&str],
+    registry: &RegistryInfo<'_>,
+) -> Result<PassPath, cargo_credential::Error> {
+    let mut p = PassPathBuilder::default();
+    if let Some(name) = registry.name {
+        p = p.with_name(name);
+    }
+
+    // Accept exactly 0 or 1 arguments.
+    let path = match args {
+        [] => return Ok(p.build(registry.index_url)),
+        [path] => path,
+        [_, ..] => {
+            return Err(cargo_credential::Error::Other(
+                "too many arguments specified in cargo credential provider config".into(),
+            ))
+        }
+    };
+
+    // Disallow absolute paths, as they're always rooted under the password
+    // store dir.
+    if path.starts_with('/') {
+        return Err(cargo_credential::Error::Other(
+            "pass cargo credential provider cannot be configured with absolute \
+            path, specify path relative to password store root"
+                .into(),
+        ));
+    }
+
+    // A path that ends with a `/` is specifying a directory tokens are stored
+    // in.
+    if path.ends_with('/') {
+        return Ok(p.under_dir(Path::new(path)).build(registry.index_url));
+    }
+
+    // Otherwise this path specifies the exact token file path to use.
+    Ok(PassPath::new(PathBuf::from(path.to_string())))
+}
+
 pub fn main() {
     let args = std::env::args().collect::<Vec<_>>();
     let args_str = args.iter().map(|v| v.as_str()).collect::<Vec<_>>();
@@ -102,4 +156,40 @@ fn print_help() {
     eprintln!();
     eprintln!("\thttps://doc.rust-lang.org/cargo/reference/registry-authentication.html");
     eprintln!();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const REG: RegistryInfo = RegistryInfo {
+        index_url: "http://itsallbroken.com/cargo",
+        name: Some("bananas"),
+        headers: vec![],
+    };
+
+    #[test]
+    fn test_path_from_no_custom_path() {
+        let got = path_from_args(&[], &REG).expect("valid path").to_string();
+
+        assert_eq!(got, "cargo-registry/bananas.token");
+    }
+
+    #[test]
+    fn test_path_from_with_custom_path() {
+        let got = path_from_args(&["tokens/go/here"], &REG)
+            .expect("valid path")
+            .to_string();
+
+        assert_eq!(got, "tokens/go/here");
+    }
+
+    #[test]
+    fn test_path_from_with_custom_dir() {
+        let got = path_from_args(&["tokens/go/here/"], &REG)
+            .expect("valid path")
+            .to_string();
+
+        assert_eq!(got, "tokens/go/here/bananas.token");
+    }
 }
