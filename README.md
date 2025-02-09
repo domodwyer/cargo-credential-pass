@@ -38,8 +38,8 @@ That's it - you're good to go!
 
 ### Token Directory
 
-You override where the tokens are stored in the password store, replacing the
-the default `cargo-registry` subdir:
+You can override where the tokens are stored in the password store, replacing
+the the default `cargo-registry` subdir:
 
 ```toml
 [registry]
