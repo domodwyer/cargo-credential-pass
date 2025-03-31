@@ -6,6 +6,8 @@ on:
   push:
     branches: [ master ]
 
+permissions: {}
+
 jobs:
   lint:
     runs-on: ubuntu-latest

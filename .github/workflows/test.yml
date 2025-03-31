@@ -6,6 +6,8 @@ on:
   push:
     branches: [ master ]
 
+permissions: {}
+
 jobs:
   test:
     runs-on: ubuntu-latest
