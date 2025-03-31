@@ -23,6 +23,8 @@ jobs:
         run: command -v node || (apt install -y --no-install-recommends nodejs zstd)
 
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Cache target dir
         id: target-dir
