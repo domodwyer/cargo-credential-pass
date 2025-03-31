@@ -34,7 +34,7 @@ Your token will now be stored as an encrypted text file in
 
 That's it - you're good to go!
 
-## (Optionally) Configure It
+## (Optionally) Customise It
 
 ### Token Directory
 
