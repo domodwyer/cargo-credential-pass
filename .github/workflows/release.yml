@@ -21,6 +21,8 @@ jobs:
   check_version:
     needs: [build, test, lint]
     runs-on: ubuntu-latest
+    env:
+      REF_NAME: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Check crate version
-        run: "[[ \"v$(yq '.package.version' Cargo.toml)\" == \"${{ github.ref_name }}\" ]]"
+        run: '[[ "v$(yq ''.package.version'' Cargo.toml)" == "$REF_NAME" ]]'
 
   # Create a github release
   github_release:
