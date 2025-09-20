@@ -12,7 +12,7 @@ categories = ["development-tools::cargo-plugins"]
 exclude = [".github"]
 
 [dependencies]
-cargo-credential = "0.4.8"
+cargo-credential = "0.4.9"
 thiserror = "2.0.16"
 
 [dev-dependencies]
