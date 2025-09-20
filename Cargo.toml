@@ -2,7 +2,7 @@
 name = "cargo-credential-pass"
 description = "Keep your cargo registry tokens encrypted in your pass store"
 authors = ["Dom Dwyer <dom@itsallbroken.com>"]
-version = "1.1.0"
+version = "1.1.1"
 edition = "2021"
 
 license = "Apache-2.0"
