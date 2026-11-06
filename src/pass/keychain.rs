@@ -19,6 +19,11 @@ pub(crate) enum Error {
     #[error("pass exited with a non-zero status code (stdout='{stdout}', stderr='{stderr}')")]
     ExecNonZero { stdout: String, stderr: String },
 
+    /// `pass edit` returned a non-zero error code (its output is not captured
+    /// so the editor can use the console).
+    #[error("pass edit exited with a non-zero status ({0})")]
+    EditNonZero(std::process::ExitStatus),
+
     /// The token read from `pass` is not a valid UTF-8 string.
     #[error("read invalid (non-utf8) token: {0}")]
     NonUtf8Password(#[from] std::string::FromUtf8Error),
@@ -81,14 +86,18 @@ impl PassKeychain {
 
     /// Pop up the user's `$EDITOR` to edit the token at `path`.
     pub(crate) fn edit_token(&self, path: &PassPath) -> Result<(), Error> {
-        let output = Command::new("pass")
+        // Inherit stdio so `pass` (and the `$EDITOR` it spawns) is attached to
+        // the console that `cargo_credential` sets up for the duration of the
+        // request - capturing it (i.e. using `output()`) leaves terminal
+        // editors with a piped stdout and a null stdin.
+        let status = Command::new("pass")
             .arg("edit")
             .arg(path)
-            .output()
+            .status()
             .map_err(Error::Exec)?;
 
-        if !output.status.success() {
-            return Err(Error::from(output));
+        if !status.success() {
+            return Err(Error::EditNonZero(status));
         }
 
         Ok(())
