@@ -27,9 +27,10 @@ impl From<pass::Error> for cargo_credential::Error {
         use pass::Error;
 
         match v {
-            Error::Exec(_) | Error::ExecNonZero { .. } | Error::NonUtf8Password(_) => {
-                cargo_credential::Error::Other(v.into())
-            }
+            Error::Exec(_)
+            | Error::ExecNonZero { .. }
+            | Error::EditNonZero(_)
+            | Error::NonUtf8Password(_) => cargo_credential::Error::Other(v.into()),
         }
     }
 }
