@@ -192,6 +192,60 @@ fn test_custom_path() {
     assert!(pass.dir().join("custom/path/bananas.secret.gpg").exists());
 }
 
+/// A login request without a token opens `$EDITOR` (via `pass edit`) and stores
+/// whatever the user saves, without the editor's output leaking into the
+/// credential protocol stream.
+#[test]
+fn test_login_with_editor() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let gpg = GpgHandle::default();
+    let pass = PassHandle::new(&gpg);
+
+    // A fake editor that writes stdout noise and saves a token to the file
+    // `pass edit` hands it.
+    let editor_dir = tempfile::tempdir().expect("failed to create tempdir");
+    let editor = editor_dir.path().join("editor.sh");
+    std::fs::write(
+        &editor,
+        "#!/bin/sh\necho 'editor noise'\necho platanos > \"$1\"\n",
+    )
+    .expect("failed to write fake editor");
+    std::fs::set_permissions(&editor, std::fs::Permissions::from_mode(0o755))
+        .expect("failed to chmod fake editor");
+
+    let hello = r#"{"v":[1]}"#;
+    let login_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "login","args": []}"#;
+    let login_response = r#"{"Ok":{"kind":"login"}}"#;
+
+    Command::cargo_bin(env!("CARGO_PKG_NAME"))
+        .unwrap()
+        .write_stdin(format!("{login_request}\n"))
+        .arg("--cargo-plugin")
+        .env_remove("PASSWORD_STORE_SIGNING_KEY")
+        .env_remove("PASSWORD_STORE_GENERATED_LENGTH")
+        .env_remove("GPG_TTY")
+        .env_remove("VISUAL")
+        .env("EDITOR", &editor)
+        .env("PASSWORD_STORE_DIR", pass.dir())
+        .env("GNUPGHOME", gpg.home_dir())
+        .assert()
+        .success()
+        .stdout(predicate::eq(
+            format!("{hello}\n{login_response}\n").into_bytes(),
+        ));
+
+    let read_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "get","operation": "read","args": []}"#;
+    let token_response = r#"{"Ok":{"kind":"get","token":"platanos","cache":"session","operation_independent":true}}"#;
+
+    run_plugin(
+        format!("{read_request}\n"),
+        &format!("{hello}\n{token_response}\n"),
+        &pass,
+        &gpg,
+    );
+}
+
 /// Only relative paths are accepted in the credential config when specifying
 /// the token path to use.
 #[test]
