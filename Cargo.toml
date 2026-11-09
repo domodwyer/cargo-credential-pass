@@ -2,7 +2,7 @@
 name = "cargo-credential-pass"
 description = "Keep your cargo registry tokens encrypted in your pass store"
 authors = ["Dom Dwyer <dom@itsallbroken.com>"]
-version = "1.1.1"
+version = "1.1.2"
 edition = "2021"
 
 license = "Apache-2.0"
@@ -12,8 +12,8 @@ categories = ["development-tools::cargo-plugins"]
 exclude = [".github"]
 
 [dependencies]
-cargo-credential = "0.4.10"
-thiserror = "2.0.18"
+cargo-credential = "0.4.11"
+thiserror = "2.0.21"
 
 [dev-dependencies]
 assert_cmd = "2.2.2"
