@@ -1,0 +1,21 @@
+FROM docker.io/rust:slim
+
+ARG CONTAINER_USER=code
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+RUN apt-get update \
+	&& apt-get install -y git gpg stow zsh nano procps coreutils file curl \
+	python3 rsync pass \
+	&& apt-get clean -y \
+	&& rm -rf /var/lib/apt/lists/* /tmp/library-scripts
+
+RUN useradd --uid 5000 --create-home --shell /bin/bash -G dialout -G plugdev ${CONTAINER_USER}
+
+# https://github.com/podman-container-tools/podman/issues/28316
+USER root
+# USER ${CONTAINER_USER}:${CONTAINER_USER}
+
+RUN rustup component add clippy rustfmt

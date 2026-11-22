@@ -62,6 +62,15 @@ path can only be used by 1 registry:
 credential-provider = ["cargo-credential-pass work/cargo-token.secret"]
 ```
 
+### Token Formatting
+
+Some 3rd party cargo registries require tokens to be presented in the form
+`Bearer {token}`. This is supported using the `--prefix` option:
+
+```toml
+[registries.my-work-registry]
+credential-provider = ["cargo-credential-pass", "--prefix", "Bearer "]
+```
 
 [pass]: https://www.passwordstore.org/
 [credential provider]:
