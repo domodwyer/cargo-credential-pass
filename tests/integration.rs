@@ -192,6 +192,104 @@ fn test_custom_path() {
     assert!(pass.dir().join("custom/path/bananas.secret.gpg").exists());
 }
 
+/// The `--prefix` argument prepends a value to the token returned by a `get`
+/// request, without affecting the token stored in the password store.
+#[test]
+fn test_prefix() {
+    let gpg = GpgHandle::default();
+    let pass = PassHandle::new(&gpg);
+
+    let hello = r#"{"v":[1]}"#;
+
+    //
+    // Login stores the raw token.
+    //
+
+    let login_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "login","token": "platanos","args": []}"#;
+    let login_response = r#"{"Ok":{"kind":"login"}}"#;
+
+    run_plugin(
+        format!("{login_request}\n"),
+        &format!("{hello}\n{login_response}\n"),
+        &pass,
+        &gpg,
+    );
+
+    //
+    // Get with `--prefix` returns the prefixed token.
+    //
+
+    let read_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "get","operation": "read","args": ["--prefix", "Bearer "]}"#;
+    let prefixed_response = r#"{"Ok":{"kind":"get","token":"Bearer platanos","cache":"session","operation_independent":true}}"#;
+
+    run_plugin(
+        format!("{read_request}\n"),
+        &format!("{hello}\n{prefixed_response}\n"),
+        &pass,
+        &gpg,
+    );
+
+    //
+    // Get without `--prefix` returns the raw token, proving the prefix is
+    // applied at read time and not stored.
+    //
+
+    let plain_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "get","operation": "read","args": []}"#;
+    let plain_response = r#"{"Ok":{"kind":"get","token":"platanos","cache":"session","operation_independent":true}}"#;
+
+    run_plugin(
+        format!("{plain_request}\n"),
+        &format!("{hello}\n{plain_response}\n"),
+        &pass,
+        &gpg,
+    );
+}
+
+/// The `--prefix` argument can be combined with a custom token path, in either
+/// argument order.
+#[test]
+fn test_prefix_with_custom_path() {
+    let gpg = GpgHandle::default();
+    let pass = PassHandle::new(&gpg);
+
+    let hello = r#"{"v":[1]}"#;
+    let login_response = format!(
+        "{hello}\n{response}\n",
+        hello = r#"{"v":[1]}"#,
+        response = r#"{"Ok":{"kind":"login"}}"#
+    );
+
+    //
+    // Prefix after the path.
+    //
+
+    let login_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "login","token": "platanos","args": ["custom/path/", "--prefix", "Bearer "]}"#;
+    run_plugin(format!("{login_request}\n"), &login_response, &pass, &gpg);
+
+    let read_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "get","operation": "read","args": ["custom/path/", "--prefix", "Bearer "]}"#;
+    let prefixed_response = r#"{"Ok":{"kind":"get","token":"Bearer platanos","cache":"session","operation_independent":true}}"#;
+
+    run_plugin(
+        format!("{read_request}\n"),
+        &format!("{hello}\n{prefixed_response}\n"),
+        &pass,
+        &gpg,
+    );
+
+    //
+    // Prefix before the path.
+    //
+
+    let read_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "get","operation": "read","args": ["--prefix", "Bearer ", "custom/path/"]}"#;
+
+    run_plugin(
+        format!("{read_request}\n"),
+        &format!("{hello}\n{prefixed_response}\n"),
+        &pass,
+        &gpg,
+    );
+}
+
 /// A login request without a token opens `$EDITOR` (via `pass edit`) and stores
 /// whatever the user saves, without the editor's output leaking into the
 /// credential protocol stream.
@@ -259,7 +357,7 @@ fn test_request_absolute_token_path() {
         &format!(
             "{hello}\n{response}\n",
             hello = r#"{"v":[1]}"#,
-            response = r#"{"Err":{"kind":"other","message":"pass cargo credential provider cannot be configured with absolute path, specify path relative to password store root","caused-by":[]}}"#,
+            response = r#"{"Err":{"kind":"other","message":"cargo-credential-pass cannot be configured with absolute path, specify path relative to password store root","caused-by":[]}}"#,
         ),
         &pass,
         &gpg,
@@ -274,16 +372,23 @@ fn test_request_too_many_args() {
     let pass = PassHandle::new(&gpg);
 
     let login_request = r#"{"v": 1,"registry": {"index-url":"sparse+https://itsallbroken.com/rust-lang/crates.io-index","name":"crates-io"},"kind": "login","token": "platanos","args": ["1","2"]}"#;
-    run_plugin(
-        format!("{login_request}\n"),
-        &format!(
-            "{hello}\n{response}\n",
-            hello = r#"{"v":[1]}"#,
-            response = r#"{"Err":{"kind":"other","message":"too many arguments specified in cargo credential provider config","caused-by":[]}}"#,
-        ),
-        &pass,
-        &gpg,
-    );
+
+    // The exact error text is produced by clap, so only assert on a stable
+    // portion of it.
+    Command::cargo_bin(env!("CARGO_PKG_NAME"))
+        .unwrap()
+        .write_stdin(format!("{login_request}\n"))
+        .arg("--cargo-plugin")
+        .env_remove("PASSWORD_STORE_SIGNING_KEY")
+        .env_remove("PASSWORD_STORE_DIR")
+        .env_remove("PASSWORD_STORE_GENERATED_LENGTH")
+        .env_remove("GPG_TTY")
+        .env("PASSWORD_STORE_DIR", pass.dir())
+        .env("GNUPGHOME", gpg.home_dir())
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("unexpected argument"))
+        .stderr(predicate::str::contains("bananas").not());
 }
 
 fn run_plugin(stdin: String, want_stdout: &str, pass: &PassHandle, gpg: &GpgHandle) {

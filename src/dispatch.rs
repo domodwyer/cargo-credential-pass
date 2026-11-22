@@ -1,4 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+
+use clap::{crate_name, CommandFactory, Parser};
 
 use crate::pass::{self, PassKeychain, PassPath, PassPathBuilder};
 use cargo_credential::{Action, CacheControl, Credential, CredentialResponse, RegistryInfo};
@@ -17,6 +19,30 @@ impl From<pass::Error> for cargo_credential::Error {
     }
 }
 
+/// A credential helper for cargo that reads registry tokens from the 'pass'
+/// secret store.
+///
+/// Configure cargo to use this binary, and then run 'cargo login' to initialise
+/// the default token.
+///
+/// See https://doc.rust-lang.org/cargo/reference/registry-authentication.html
+/// for general cargo credential help.
+///
+///
+#[derive(Parser, Debug)]
+#[command(version, long_about, verbatim_doc_comment)]
+pub(super) struct Config {
+    path: Option<PathBuf>,
+
+    /// A prefix to prepend to the returned token.
+    ///
+    /// This is useful for 3rd party cargo registries that expect an API token
+    /// to be provided in the "Bearer {token}" format (provide "Bearer " as
+    /// prefix).
+    #[arg(long, verbatim_doc_comment)]
+    prefix: Option<String>,
+}
+
 /// A request dispatcher for [`cargo_credential`].
 ///
 /// A thin layer to translate [`cargo_credential::Action`] ops into
@@ -30,7 +56,7 @@ impl Credential for Dispatch {
         action: &Action<'_>,
         args: &[&str],
     ) -> Result<CredentialResponse, cargo_credential::Error> {
-        let path = path_from_args(args, registry)?;
+        let (path, config) = path_from_args(args, registry)?;
         let keychain = PassKeychain::default();
 
         match action {
@@ -46,11 +72,20 @@ impl Credential for Dispatch {
             }
 
             // Return a token for a specific registry, if one exists.
-            Action::Get(_opts) => Ok(CredentialResponse::Get {
-                token: keychain.read_token(&path)?,
-                cache: CacheControl::Session,
-                operation_independent: true,
-            }),
+            Action::Get(_opts) => {
+                let mut token = keychain.read_token(&path)?;
+
+                // Apply a prefix if requested.
+                if let Some(prefix) = config.prefix {
+                    token = token.map(|v| format!("{prefix}{v}"))
+                }
+
+                Ok(CredentialResponse::Get {
+                    token,
+                    cache: CacheControl::Session,
+                    operation_independent: true,
+                })
+            }
 
             // Destroy the token in the password store.
             Action::Logout => {
@@ -77,41 +112,58 @@ impl Credential for Dispatch {
 fn path_from_args(
     args: &[&str],
     registry: &RegistryInfo<'_>,
-) -> Result<PassPath, cargo_credential::Error> {
+) -> Result<(PassPath, Config), cargo_credential::Error> {
+    // Parse the arg input, inserting a dummy first argument for clap to use as
+    // the bin name in any help text.
+    let args = match Config::try_parse_from(
+        std::iter::once(Config::command().get_bin_name().unwrap_or(crate_name!()))
+            .chain(args.iter().copied()),
+    ) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(cargo_credential::Error::Other(
+                format!(
+                    "invalid arguments provided to cargo-credential-pass: \
+					\n\n\t{e}\n\n \
+					try running '{} --help' for allowed options.",
+                    crate_name!(),
+                )
+                .into(),
+            ));
+        }
+    };
+
     let mut p = PassPathBuilder::default();
     if let Some(name) = registry.name {
         p = p.with_name(name);
     }
 
-    // Accept exactly 0 or 1 arguments.
-    let path = match args {
-        [] => return Ok(p.build(registry.index_url)),
-        [path] => path,
-        [_, ..] => {
-            return Err(cargo_credential::Error::Other(
-                "too many arguments specified in cargo credential provider config".into(),
-            ))
-        }
+    let path = match &args.path {
+        Some(ref v) => v,
+        None => return Ok((p.build(registry.index_url), args)),
     };
 
     // Disallow absolute paths, as they're always rooted under the password
     // store dir.
-    if path.starts_with('/') {
+    if path.is_absolute() {
         return Err(cargo_credential::Error::Other(
-            "pass cargo credential provider cannot be configured with absolute \
-            path, specify path relative to password store root"
-                .into(),
+            format!(
+                "{} cannot be configured with absolute \
+            path, specify path relative to password store root",
+                crate_name!()
+            )
+            .into(),
         ));
     }
 
     // A path that ends with a `/` is specifying a directory tokens are stored
     // in.
-    if path.ends_with('/') {
-        return Ok(p.under_dir(Path::new(path)).build(registry.index_url));
+    if path.to_string_lossy().ends_with('/') {
+        return Ok((p.under_dir(path.as_ref()).build(registry.index_url), args));
     }
 
     // Otherwise this path specifies the exact token file path to use.
-    Ok(PassPath::new(PathBuf::from(path.to_string())))
+    Ok((PassPath::new(path.clone()), args))
 }
 
 #[cfg(test)]
@@ -126,7 +178,7 @@ mod tests {
 
     #[test]
     fn test_path_from_no_custom_path() {
-        let got = path_from_args(&[], &REG).expect("valid path").to_string();
+        let got = path_from_args(&[], &REG).expect("valid path").0.to_string();
 
         assert_eq!(got, "cargo-registry/bananas.token");
     }
@@ -135,6 +187,7 @@ mod tests {
     fn test_path_from_with_custom_path() {
         let got = path_from_args(&["tokens/go/here"], &REG)
             .expect("valid path")
+            .0
             .to_string();
 
         assert_eq!(got, "tokens/go/here");
@@ -144,8 +197,35 @@ mod tests {
     fn test_path_from_with_custom_dir() {
         let got = path_from_args(&["tokens/go/here/"], &REG)
             .expect("valid path")
+            .0
             .to_string();
 
         assert_eq!(got, "tokens/go/here/bananas.token");
+    }
+
+    #[test]
+    fn test_custom_path_with_prefix_reversed() {
+        let (path, config) =
+            path_from_args(&["--prefix", "platanos", "tokens/go/here"], &REG).expect("valid path");
+
+        assert_eq!(path.to_string(), "tokens/go/here");
+        assert_eq!(config.prefix.as_deref(), Some("platanos"));
+    }
+
+    #[test]
+    fn test_custom_path_with_prefix() {
+        let (path, config) =
+            path_from_args(&["tokens/go/here", "--prefix", "platanos"], &REG).expect("valid path");
+
+        assert_eq!(path.to_string(), "tokens/go/here");
+        assert_eq!(config.prefix.as_deref(), Some("platanos"));
+    }
+
+    #[test]
+    fn test_path_with_prefix() {
+        let (path, config) = path_from_args(&["--prefix", "platanos"], &REG).expect("valid path");
+
+        assert_eq!(path.to_string(), "cargo-registry/bananas.token");
+        assert_eq!(config.prefix.as_deref(), Some("platanos"));
     }
 }
