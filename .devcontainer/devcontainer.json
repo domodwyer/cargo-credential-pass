@@ -1,0 +1,31 @@
+{
+    "build": {
+        "dockerfile": "Containerfile"
+    },
+    "containerUser": "root",
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "rust-lang.rust-analyzer",
+                "tamasfe.even-better-toml",
+                "yzhang.markdown-all-in-one",
+                "EditorConfig.EditorConfig",
+                "usernamehw.errorlens",
+                "fabiospampinato.vscode-highlight",
+                "fabiospampinato.vscode-open-in-github",
+                "Gruntfuggly.todo-tree",
+                "stkb.rewrap",
+                "redhat.vscode-yaml",
+                "redhat.ansible"
+            ],
+        },
+    },
+    "postCreateCommand": "rustup toolchain install --profile default",
+    "initializeCommand": "mkdir -p ${localWorkspaceFolder}/.container-cargo-cache",
+    "mounts": [
+        "source=${localWorkspaceFolder}/.container-cargo-cache,target=/usr/local/cargo/registry,type=bind",
+    ],
+    // "appPort": [
+    //     8080
+    // ]
+}
